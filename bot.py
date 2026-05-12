@@ -177,27 +177,48 @@ async def ask_groq(user_id: int, user_message: str) -> str:
 
 
 def get_trends_data_sync() -> str:
-    """Google Trends'ten Türkiye dropshipping trendlerini çeker."""
+    """SerpApi üzerinden Google Trends Türkiye verisini çeker."""
+    import urllib.request
+    import json
+
+    SERPAPI_KEY = os.getenv("SERPAPI_KEY")
+    if not SERPAPI_KEY:
+        return None
+
+    keywords = [
+        "telefon kılıfı", "led ışık", "bluetooth kulaklık",
+        "spor çanta", "cüzdan erkek"
+    ]
+
     try:
-        from pytrends.request import TrendReq
-        pytrends = TrendReq(hl='tr-TR', tz=180, timeout=(10, 25))
+        results = []
+        for keyword in keywords:
+            import urllib.parse
+            params = urllib.parse.urlencode({
+                "engine": "google_trends",
+                "q": keyword,
+                "geo": "TR",
+                "date": "now 7-d",
+                "api_key": SERPAPI_KEY,
+            })
+            url = f"https://serpapi.com/search?{params}"
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=10) as response:
+                data = json.loads(response.read().decode())
 
-        keywords = [
-            "telefon kılıfı", "led ışık", "bluetooth kulaklık",
-            "spor çanta", "cüzdan erkek"
-        ]
+            timeline = data.get("interest_over_time", {}).get("timeline_data", [])
+            if timeline:
+                values = [v.get("extracted_value", 0) for t in timeline for v in t.get("values", []) if v.get("query") == keyword]
+                avg = sum(values) / len(values) if values else 0
+            else:
+                avg = 0
+            results.append((keyword, avg))
 
-        pytrends.build_payload(keywords, cat=0, timeframe='now 7-d', geo='TR')
-        interest_df = pytrends.interest_over_time()
-
-        if interest_df.empty:
-            return None
-
-        averages = interest_df[keywords].mean().sort_values(ascending=False)
+        results.sort(key=lambda x: x[1], reverse=True)
 
         lines = ["📊 *GOOGLE TRENDS — Türkiye (Son 7 Gün)*\n"]
         emojis = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
-        for i, (keyword, score) in enumerate(averages.items()):
+        for i, (keyword, score) in enumerate(results):
             bar = "█" * int(score / 10) if score > 0 else "░"
             lines.append(f"{emojis[i]} *{keyword}* — {int(score)}/100 {bar}")
 
@@ -205,12 +226,12 @@ def get_trends_data_sync() -> str:
         return "\n".join(lines)
 
     except Exception as e:
-        logger.warning(f"Trends verisi alınamadı: {e}")
+        logger.warning(f"SerpApi Trends hatası: {e}")
         return None
 
 
 async def get_trends_data() -> str:
-    """Async wrapper — pytrends'i ayrı thread'de çalıştırır, event loop'u bloke etmez."""
+    """Async wrapper — SerpApi isteğini ayrı thread'de çalıştırır."""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, get_trends_data_sync)
 
