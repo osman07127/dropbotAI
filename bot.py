@@ -176,7 +176,7 @@ async def ask_groq(user_id: int, user_message: str) -> str:
             return "⚠️ Beklenmedik bir hata oluştu. Lütfen tekrar dene."
 
 
-async def get_trends_data() -> str:
+def get_trends_data_sync() -> str:
     """Google Trends'ten Türkiye dropshipping trendlerini çeker."""
     try:
         from pytrends.request import TrendReq
@@ -207,6 +207,12 @@ async def get_trends_data() -> str:
     except Exception as e:
         logger.warning(f"Trends verisi alınamadı: {e}")
         return None
+
+
+async def get_trends_data() -> str:
+    """Async wrapper — pytrends'i ayrı thread'de çalıştırır, event loop'u bloke etmez."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, get_trends_data_sync)
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
